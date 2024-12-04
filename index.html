@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AR Navigation Game</title>
+    <title>AR Navigation Game with Compass</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
@@ -58,6 +58,37 @@
         text-align: center;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       }
+      #compass {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 150px;
+        height: 150px;
+        border: 5px solid #333;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #compass-pointer {
+        position: absolute;
+        width: 100px;
+        height: 4px;
+        background-color: red;
+        transform-origin: bottom center;
+        transform: rotate(0deg);
+      }
+      #compass-text {
+        position: absolute;
+        top: 60%;
+        text-align: center;
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+      }
     </style>
   </head>
   <body>
@@ -66,6 +97,10 @@
       <p id="status-message">Press Start to begin navigation.</p>
     </div>
     <div id="acknowledgment">You've reached your destination!</div>
+    <div id="compass">
+      <div id="compass-pointer"></div>
+      <div id="compass-text">Direction</div>
+    </div>
     <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
       <a-assets>
         <a-asset-item id="target-model" src="AnimatedRalphie.glb"></a-asset-item>
@@ -74,16 +109,7 @@
         id="target-model-entity"
         gltf-model="#target-model"
         scale="1 1 1"
-        rotation="0 0 0"
         gps-entity-place="latitude: 40.032730; longitude: -105.258652;">
-      </a-entity>
-      <a-entity id="direction-arrow" position="0 1 -2">
-        <a-triangle
-          vertex-a="0 1 0"
-          vertex-b="-0.5 -0.5 0"
-          vertex-c="0.5 -0.5 0"
-          material="color: #FFD700; transparent: true; opacity: 0.8">
-        </a-triangle>
       </a-entity>
       <a-camera gps-camera rotation-reader></a-camera>
     </a-scene>
@@ -137,13 +163,15 @@
 
       function updateUI(distance, bearing) {
         const statusMessage = document.getElementById("status-message");
-        const arrow = document.getElementById("direction-arrow");
+        const compassPointer = document.getElementById("compass-pointer");
+        const compassText = document.getElementById("compass-text");
 
-        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m | Bearing: ${Math.round(bearing)}°`;
-        arrow.setAttribute("rotation", `0 ${-bearing} 0`);
+        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m`;
+        compassPointer.style.transform = `rotate(${bearing}deg)`;
 
-        const color = distance < 10 ? "#00FF00" : distance < 50 ? "#FFD700" : "#FF0000";
-        arrow.setAttribute("material", `color: ${color}`);
+        const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
+        const directionIndex = Math.round(bearing / 45) % 8;
+        compassText.textContent = directions[directionIndex];
       }
 
       function calculateDistance(lat1, lon1, lat2, lon2) {
