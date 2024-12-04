@@ -89,14 +89,26 @@
         font-weight: bold;
         color: #333;
       }
+      #destination-arrow {
+        position: fixed;
+        bottom: 200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 0;
+        height: 0;
+        border-left: 20px solid transparent;
+        border-right: 20px solid transparent;
+        border-bottom: 50px solid green;
+      }
     </style>
   </head>
   <body>
     <div id="game-ui">
-      <button id="start-button" onclick="startGame()">Start Navigation</button>
+      <button id="start-button" onclick="requestPermissionsAndStartGame()">Start Navigation</button>
       <p id="status-message">Press Start to begin navigation.</p>
     </div>
     <div id="acknowledgment">You've reached your destination!</div>
+    <div id="destination-arrow"></div>
     <div id="compass">
       <div id="compass-pointer"></div>
       <div id="compass-text">Direction</div>
@@ -118,6 +130,33 @@
       const LOCATION_OPTIONS = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
       let gameStarted = false;
       let watchId = null;
+      let currentHeading = 0;
+      let currentLocation = null;
+
+      function requestPermissionsAndStartGame() {
+        // Request location permission
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(() => {
+            // Request device orientation permission (for iOS)
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+              DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                  if (response === 'granted') {
+                    startGame();
+                  } else {
+                    alert('Device orientation permission denied');
+                  }
+                })
+                .catch(console.error);
+            } else {
+              // For browsers that don't require explicit permission
+              startGame();
+            }
+          }, onLocationError);
+        } else {
+          alert('Geolocation is not supported by this browser.');
+        }
+      }
 
       function startGame() {
         if (gameStarted) return;
@@ -126,6 +165,10 @@
         document.getElementById("start-button").style.display = "none";
         document.getElementById("status-message").textContent = "Acquiring location...";
 
+        // Initialize device orientation
+        initDeviceOrientation();
+        
+        // Start watching location
         watchId = navigator.geolocation.watchPosition(
           onLocationUpdate,
           onLocationError,
@@ -133,15 +176,61 @@
         );
       }
 
+      function initDeviceOrientation() {
+        if (window.DeviceOrientationEvent) {
+          window.addEventListener('deviceorientation', handleOrientation, false);
+        } else {
+          console.warn('Device orientation not supported');
+        }
+      }
+
+      function handleOrientation(event) {
+        let heading;
+        
+        // Prefer the standard compass heading if available
+        if (event.webkitCompassHeading) {
+          // iOS devices
+          heading = event.webkitCompassHeading;
+        } else if (event.alpha !== null) {
+          // Most Android devices
+          // Convert from standard compass to true north
+          heading = 360 - event.alpha;
+        } else {
+          return;
+        }
+
+        currentHeading = heading;
+        updateCompassUI(heading);
+
+        // If we have both current location and target, update UI
+        if (currentLocation) {
+          const bearing = calculateBearing(
+            currentLocation.latitude, 
+            currentLocation.longitude, 
+            targetCoordinates.latitude, 
+            targetCoordinates.longitude
+          );
+          updateUI(calculateDistance(
+            currentLocation.latitude, 
+            currentLocation.longitude, 
+            targetCoordinates.latitude, 
+            targetCoordinates.longitude
+          ), bearing);
+        }
+      }
+
       function stopGame() {
         if (watchId) {
           navigator.geolocation.clearWatch(watchId);
           watchId = null;
         }
+        window.removeEventListener('deviceorientation', handleOrientation);
       }
 
       function onLocationUpdate(position) {
         const { latitude, longitude } = position.coords;
+        currentLocation = { latitude, longitude };
+        
         const distance = calculateDistance(latitude, longitude, targetCoordinates.latitude, targetCoordinates.longitude);
         const bearing = calculateBearing(latitude, longitude, targetCoordinates.latitude, targetCoordinates.longitude);
 
@@ -161,17 +250,29 @@
         console.error("Location Error: ", error);
       }
 
+      function updateCompassUI(heading) {
+        const compassPointer = document.getElementById('compass-pointer');
+        const compassText = document.getElementById('compass-text');
+
+        // Rotate compass pointer
+        compassPointer.style.transform = `rotate(${-heading}deg)`;
+
+        // Update direction text
+        const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
+        const directionIndex = Math.round(heading / 45) % 8;
+        compassText.textContent = directions[directionIndex];
+      }
+
       function updateUI(distance, bearing) {
         const statusMessage = document.getElementById("status-message");
-        const compassPointer = document.getElementById("compass-pointer");
-        const compassText = document.getElementById("compass-text");
+        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m | Target Bearing: ${bearing.toFixed(1)}°`;
 
-        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m`;
-        compassPointer.style.transform = `rotate(${bearing}deg)`;
-
-        const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
-        const directionIndex = Math.round(bearing / 45) % 8;
-        compassText.textContent = directions[directionIndex];
+        // Calculate relative bearing by subtracting current heading from target bearing
+        const relativeBearing = (bearing - currentHeading + 360) % 360;
+        
+        // Rotate destination arrow to point to the destination
+        const destinationArrow = document.getElementById('destination-arrow');
+        destinationArrow.style.transform = `rotate(${relativeBearing}deg)`;
       }
 
       function calculateDistance(lat1, lon1, lat2, lon2) {
