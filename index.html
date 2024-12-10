@@ -17,11 +17,23 @@
         top: 0;
         left: 0;
         right: 0;
-        padding: 20px;
+        padding: 10px 20px;
         text-align: center;
-        background-color: rgba(248, 248, 248, 0.9);
+        background-color: rgba(255, 255, 255, 0.9);
         z-index: 100;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      #clue-message {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+        line-height: 1.4;
+      }
+      #status-message {
+        font-size: 14px;
+        color: #555;
+        margin: 5px 0 0 0;
       }
       #start-button {
         background-color: #4caf50;
@@ -31,17 +43,11 @@
         border: none;
         border-radius: 4px;
         cursor: pointer;
-        margin-bottom: 10px;
+        margin-top: 10px;
         transition: background-color 0.3s;
       }
       #start-button:hover {
         background-color: #45a049;
-      }
-      #status-message {
-        font-size: 16px;
-        margin-top: 10px;
-        color: #333;
-        line-height: 1.4;
       }
       #acknowledgment {
         position: fixed;
@@ -89,26 +95,15 @@
         font-weight: bold;
         color: #333;
       }
-      #destination-arrow {
-        position: fixed;
-        bottom: 200px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 0;
-        height: 0;
-        border-left: 20px solid transparent;
-        border-right: 20px solid transparent;
-        border-bottom: 50px solid green;
-      }
     </style>
   </head>
   <body>
     <div id="game-ui">
-      <button id="start-button" onclick="requestPermissionsAndStartGame()">Start Navigation</button>
+      <p id="clue-message">Press Start to reveal the clue and begin navigation.</p>
       <p id="status-message">Press Start to begin navigation.</p>
+      <button id="start-button" onclick="startGame()">Start Navigation</button>
     </div>
     <div id="acknowledgment">You've reached your destination!</div>
-    <div id="destination-arrow"></div>
     <div id="compass">
       <div id="compass-pointer"></div>
       <div id="compass-text">Direction</div>
@@ -121,102 +116,44 @@
         id="target-model-entity"
         gltf-model="#target-model"
         scale="1 1 1"
-        gps-entity-place="latitude: 40.032730; longitude: -105.258652;">
+        gps-entity-place>
       </a-entity>
       <a-camera gps-camera rotation-reader></a-camera>
     </a-scene>
     <script>
-      const targetCoordinates = { latitude: 40.032730, longitude: -105.258652 };
-      const LOCATION_OPTIONS = { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 };
+      const locations = [
+        { latitude: 40.0095, longitude: -105.2716, clue: "The heart of CU, where students flock to study and socialize. You'll find Ralphie near the fountain." },
+        { latitude: 40.0077, longitude: -105.2725, clue: "Where books and knowledge abound, Ralphie’s hiding somewhere profound." },
+        { latitude: 40.0094, longitude: -105.2658, clue: "Catch a game or feel the roar of the crowd. Ralphie loves to run here!" },
+        { latitude: 40.0079, longitude: -105.2734, clue: "Beneath the red roof of this arts haven, find Ralphie enjoying a masterpiece." },
+        { latitude: 40.0065, longitude: -105.2647, clue: "Ralphie might be pondering engineering marvels in this hub of innovation." },
+      ];
+
+      let targetLocation;
       let gameStarted = false;
       let watchId = null;
-      let currentHeading = 0;
-      let currentLocation = null;
-
-      function requestPermissionsAndStartGame() {
-        // Request location permission
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(() => {
-            // Request device orientation permission (for iOS)
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-              DeviceOrientationEvent.requestPermission()
-                .then(response => {
-                  if (response === 'granted') {
-                    startGame();
-                  } else {
-                    alert('Device orientation permission denied');
-                  }
-                })
-                .catch(console.error);
-            } else {
-              // For browsers that don't require explicit permission
-              startGame();
-            }
-          }, onLocationError);
-        } else {
-          alert('Geolocation is not supported by this browser.');
-        }
-      }
 
       function startGame() {
         if (gameStarted) return;
 
         gameStarted = true;
         document.getElementById("start-button").style.display = "none";
+
+        // Randomly select a location
+        targetLocation = locations[Math.floor(Math.random() * locations.length)];
+        document.getElementById("clue-message").textContent = `Clue: ${targetLocation.clue}`;
         document.getElementById("status-message").textContent = "Acquiring location...";
 
-        // Initialize device orientation
-        initDeviceOrientation();
-        
-        // Start watching location
-        watchId = navigator.geolocation.watchPosition(
-          onLocationUpdate,
-          onLocationError,
-          LOCATION_OPTIONS
-        );
-      }
+        // Set AR target coordinates
+        const modelEntity = document.getElementById("target-model-entity");
+        modelEntity.setAttribute("gps-entity-place", `latitude: ${targetLocation.latitude}; longitude: ${targetLocation.longitude}`);
 
-      function initDeviceOrientation() {
-        if (window.DeviceOrientationEvent) {
-          window.addEventListener('deviceorientation', handleOrientation, false);
-        } else {
-          console.warn('Device orientation not supported');
-        }
-      }
-
-      function handleOrientation(event) {
-        let heading;
-        
-        // Prefer the standard compass heading if available
-        if (event.webkitCompassHeading) {
-          // iOS devices
-          heading = event.webkitCompassHeading;
-        } else if (event.alpha !== null) {
-          // Most Android devices
-          // Convert from standard compass to true north
-          heading = 360 - event.alpha;
-        } else {
-          return;
-        }
-
-        currentHeading = heading;
-        updateCompassUI(heading);
-
-        // If we have both current location and target, update UI
-        if (currentLocation) {
-          const bearing = calculateBearing(
-            currentLocation.latitude, 
-            currentLocation.longitude, 
-            targetCoordinates.latitude, 
-            targetCoordinates.longitude
-          );
-          updateUI(calculateDistance(
-            currentLocation.latitude, 
-            currentLocation.longitude, 
-            targetCoordinates.latitude, 
-            targetCoordinates.longitude
-          ), bearing);
-        }
+        // Start location tracking
+        watchId = navigator.geolocation.watchPosition(onLocationUpdate, onLocationError, {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        });
       }
 
       function stopGame() {
@@ -224,15 +161,12 @@
           navigator.geolocation.clearWatch(watchId);
           watchId = null;
         }
-        window.removeEventListener('deviceorientation', handleOrientation);
       }
 
       function onLocationUpdate(position) {
         const { latitude, longitude } = position.coords;
-        currentLocation = { latitude, longitude };
-        
-        const distance = calculateDistance(latitude, longitude, targetCoordinates.latitude, targetCoordinates.longitude);
-        const bearing = calculateBearing(latitude, longitude, targetCoordinates.latitude, targetCoordinates.longitude);
+        const distance = calculateDistance(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
+        const bearing = calculateBearing(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
 
         updateUI(distance, bearing);
 
@@ -250,29 +184,17 @@
         console.error("Location Error: ", error);
       }
 
-      function updateCompassUI(heading) {
-        const compassPointer = document.getElementById('compass-pointer');
-        const compassText = document.getElementById('compass-text');
-
-        // Rotate compass pointer
-        compassPointer.style.transform = `rotate(${-heading}deg)`;
-
-        // Update direction text
-        const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
-        const directionIndex = Math.round(heading / 45) % 8;
-        compassText.textContent = directions[directionIndex];
-      }
-
       function updateUI(distance, bearing) {
         const statusMessage = document.getElementById("status-message");
-        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m | Target Bearing: ${bearing.toFixed(1)}°`;
+        const compassPointer = document.getElementById("compass-pointer");
+        const compassText = document.getElementById("compass-text");
 
-        // Calculate relative bearing by subtracting current heading from target bearing
-        const relativeBearing = (bearing - currentHeading + 360) % 360;
-        
-        // Rotate destination arrow to point to the destination
-        const destinationArrow = document.getElementById('destination-arrow');
-        destinationArrow.style.transform = `rotate(${relativeBearing}deg)`;
+        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m`;
+        compassPointer.style.transform = `rotate(${bearing}deg)`;
+
+        const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
+        const directionIndex = Math.round(bearing / 45) % 8;
+        compassText.textContent = directions[directionIndex];
       }
 
       function calculateDistance(lat1, lon1, lat2, lon2) {
