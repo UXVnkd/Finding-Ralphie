@@ -134,26 +134,52 @@
       <a-camera gps-camera rotation-reader></a-camera>
     </a-scene>
     <script>
-      // Precise destination constants
-      const DESTINATION_THRESHOLD = 15; // meters
-      const INITIAL_VISIBILITY_THRESHOLD = 50; // meters for initial model visibility
+      // Game configuration
+      const DESTINATION_THRESHOLD = 20; // meters
+      const INITIAL_VISIBILITY_THRESHOLD = 100; // meters
 
+      // Predefined locations
       const locations = [
-        { latitude: 40.007154, longitude: -105.270400, clue: "The heart of CU, where students flock to study and socialize. You'll find Ralphie near the fountain." },
-        { latitude: 40.006191, longitude: -105.271594, clue: "Where books and knowledge abound, Ralphie's hiding somewhere profound." },
-        { latitude: 40.008563, longitude: -105.270201, clue: "Catch a game or feel the roar of the crowd. Ralphie loves to run here!" },
-        { latitude: 40.009452, longitude: -105.269720, clue: "Beneath the red roof of this arts haven, find Ralphie enjoying a masterpiece." }
+        { 
+          latitude: 40.007154, 
+          longitude: -105.270400, 
+          clue: "The heart of CU, where students flock to study and socialize. You'll find Ralphie near the fountain." 
+        },
+        { 
+          latitude: 40.006191, 
+          longitude: -105.271594, 
+          clue: "Where books and knowledge abound, Ralphie's hiding somewhere profound." 
+        },
+        { 
+          latitude: 40.008563, 
+          longitude: -105.270201, 
+          clue: "Catch a game or feel the roar of the crowd. Ralphie loves to run here!" 
+        },
+        { 
+          latitude: 40.009452, 
+          longitude: -105.269720, 
+          clue: "Beneath the red roof of this arts haven, find Ralphie enjoying a masterpiece." 
+        }
       ];
 
+      // Game state variables
       let targetLocation;
       let gameStarted = false;
       let watchId = null;
       let currentHeading = 0;
       let currentLocation = null;
 
+      // Request permissions and start game
       function requestPermissionsAndStartGame() {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(() => {
+        if (!navigator.geolocation) {
+          alert('Geolocation is not supported by this browser.');
+          return;
+        }
+
+        // Request location permission first
+        navigator.geolocation.getCurrentPosition(
+          () => {
+            // Try to request device orientation permission (for iOS)
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
               DeviceOrientationEvent.requestPermission()
                 .then(response => {
@@ -165,14 +191,18 @@
                 })
                 .catch(console.error);
             } else {
+              // For browsers that don't require explicit permission
               startGame();
             }
-          }, onLocationError);
-        } else {
-          alert('Geolocation is not supported by this browser.');
-        }
+          }, 
+          (error) => {
+            console.error('Location permission error:', error);
+            alert('Location permission denied. Cannot start game.');
+          }
+        );
       }
 
+      // Start the game
       function startGame() {
         if (gameStarted) return;
 
@@ -181,52 +211,60 @@
 
         // Randomly select a location
         targetLocation = locations[Math.floor(Math.random() * locations.length)];
+        
         document.getElementById("clue-message").textContent = `Clue: ${targetLocation.clue}`;
-        document.getElementById("status-message").textContent = "Acquiring location...";
+        document.getElementById("status-message").textContent = "Tracking your location...";
+        document.getElementById("acknowledgment").style.display = "none";
 
         // Set AR target coordinates
         const modelEntity = document.getElementById("target-model-entity");
         modelEntity.setAttribute("gps-entity-place", `latitude: ${targetLocation.latitude}; longitude: ${targetLocation.longitude}`);
-        modelEntity.setAttribute("visible", "false");
+        
+        // Start location tracking
+        watchId = navigator.geolocation.watchPosition(
+          onLocationUpdate, 
+          onLocationError, 
+          {
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0
+          }
+        );
 
         // Initialize device orientation
         initDeviceOrientation();
-
-        // Start location tracking
-        watchId = navigator.geolocation.watchPosition(onLocationUpdate, onLocationError, {
-          enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 0,
-        });
       }
 
+      // Handle location updates
       function onLocationUpdate(position) {
         const { latitude, longitude } = position.coords;
         currentLocation = { latitude, longitude };
         
-        const distance = calculateDistance(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
-        const bearing = calculateBearing(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
-
-        // Manage AR model visibility
-        const modelEntity = document.getElementById("target-model-entity");
+        const distance = calculateDistance(
+          latitude, longitude, 
+          targetLocation.latitude, 
+          targetLocation.longitude
+        );
         
-        // Show model when close enough
-        if (distance <= INITIAL_VISIBILITY_THRESHOLD) {
-          modelEntity.setAttribute('visible', 'true');
-        }
+        const bearing = calculateBearing(
+          latitude, longitude, 
+          targetLocation.latitude, 
+          targetLocation.longitude
+        );
 
+        // Update UI with current distance and bearing
         updateUI(distance, bearing);
 
-        // Precise destination detection
+        // Check for destination
         if (distance <= DESTINATION_THRESHOLD) {
           const acknowledgment = document.getElementById("acknowledgment");
           acknowledgment.textContent = `Congratulations! You've found the location.\nDistance: ${distance.toFixed(1)}m`;
           acknowledgment.style.display = "block";
-          
           stopGame();
         }
       }
 
+      // Stop the game
       function stopGame() {
         if (watchId) {
           navigator.geolocation.clearWatch(watchId);
@@ -235,6 +273,7 @@
         window.removeEventListener('deviceorientation', handleOrientation);
       }
 
+      // Initialize device orientation tracking
       function initDeviceOrientation() {
         if (window.DeviceOrientationEvent) {
           window.addEventListener('deviceorientation', handleOrientation, false);
@@ -243,6 +282,7 @@
         }
       }
 
+      // Handle device orientation
       function handleOrientation(event) {
         let heading;
         
@@ -256,23 +296,9 @@
 
         currentHeading = heading;
         updateCompassUI(heading);
-
-        if (currentLocation) {
-          const bearing = calculateBearing(
-            currentLocation.latitude, 
-            currentLocation.longitude, 
-            targetLocation.latitude, 
-            targetLocation.longitude
-          );
-          updateUI(calculateDistance(
-            currentLocation.latitude, 
-            currentLocation.longitude, 
-            targetLocation.latitude, 
-            targetLocation.longitude
-          ), bearing);
-        }
       }
 
+      // Update compass UI
       function updateCompassUI(heading) {
         const compassPointer = document.getElementById('compass-pointer');
         const compassText = document.getElementById('compass-text');
@@ -284,6 +310,7 @@
         compassText.textContent = directions[directionIndex];
       }
 
+      // Update game UI
       function updateUI(distance, bearing) {
         const statusMessage = document.getElementById("status-message");
         statusMessage.textContent = `Distance: ${distance.toFixed(1)}m | Target Bearing: ${bearing.toFixed(1)}°`;
@@ -294,25 +321,49 @@
         destinationArrow.style.transform = `rotate(${relativeBearing}deg)`;
       }
 
+      // Calculate distance between two coordinates
       function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000;
+        const R = 6371000; // Earth's radius in meters
         const dLat = ((lat2 - lat1) * Math.PI) / 180;
         const dLon = ((lon2 - lon1) * Math.PI) / 180;
-        const a = Math.sin(dLat / 2) ** 2 +
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
           Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLon / 2) ** 2;
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
       }
 
+      // Calculate bearing between two coordinates
       function calculateBearing(lat1, lon1, lat2, lon2) {
         const dLon = ((lon2 - lon1) * Math.PI) / 180;
         const lat1Rad = (lat1 * Math.PI) / 180;
         const lat2Rad = (lat2 * Math.PI) / 180;
         const y = Math.sin(dLon) * Math.cos(lat2Rad);
-        const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+        const x = 
+          Math.cos(lat1Rad) * Math.sin(lat2Rad) -
           Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
         return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+      }
+
+      // Handle location tracking errors
+      function onLocationError(error) {
+        console.error('Location tracking error:', error);
+        document.getElementById("status-message").textContent = "Error tracking location.";
+        
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            alert("Location permission denied. Please enable location services.");
+            break;
+          case error.POSITION_UNAVAILABLE:
+            alert("Location information is unavailable.");
+            break;
+          case error.TIMEOUT:
+            alert("Location request timed out.");
+            break;
+          default:
+            alert("An unknown error occurred while tracking location.");
+        }
       }
     </script>
   </body>
