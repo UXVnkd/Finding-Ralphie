@@ -2,151 +2,398 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Ralphie AR Navigation Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AR Navigation Game with Compass</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
-      * {
-        box-sizing: border-box;
-        touch-action: manipulation;
-        -webkit-tap-highlight-color: transparent;
-      }
-      
-      html, body {
+      body {
         margin: 0;
-        padding: 0;
-        height: 100%;
-        overscroll-behavior: none;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
       }
-
       #game-ui {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
-        padding: 15px;
-        background-color: rgba(255, 255, 255, 0.95);
-        z-index: 100;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        padding: 10px 20px;
         text-align: center;
-      }
-
-      #clue-message {
-        font-size: calc(16px + 0.5vw);
-        font-weight: 600;
-        color: #2c3e50;
-        margin-bottom: 10px;
-        line-height: 1.4;
-      }
-
-      #status-message {
-        font-size: calc(14px + 0.3vw);
-        color: #7f8c8d;
-      }
-
-      #start-button {
-        width: 80%;
-        max-width: 300px;
-        padding: 15px;
-        margin: 15px auto;
-        background-color: #3498db;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 18px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
-
-      #start-button:active {
-        transform: scale(0.95);
+        background-color: rgba(255, 255, 255, 0.9);
+        z-index: 100;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       }
-
+      #clue-message {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+        line-height: 1.4;
+      }
+      #status-message {
+        font-size: 14px;
+        color: #555;
+        margin: 5px 0 0 0;
+      }
+      #start-button {
+        background-color: #4caf50;
+        color: white;
+        padding: 12px 24px;
+        font-size: 18px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 10px;
+        transition: background-color 0.3s;
+      }
+      #start-button:hover {
+        background-color: #45a049;
+      }
+      #acknowledgment {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: #4caf50;
+        color: white;
+        padding: 20px;
+        font-size: 20px;
+        border-radius: 10px;
+        display: none;
+        z-index: 100;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      #next-level-button {
+        background-color: #2196F3;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        margin-top: 10px;
+        cursor: pointer;
+        display: block;
+      }
+      #level-indicator {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 14px;
+        z-index: 101;
+      }
       #compass {
         position: fixed;
-        bottom: 5vh;
+        bottom: 20px;
         left: 50%;
         transform: translateX(-50%);
-        width: min(200px, 80vw);
-        height: min(200px, 80vw);
-        border: 5px solid #34495e;
+        width: 150px;
+        height: 150px;
+        border: 5px solid #333;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.9);
+        background: rgba(255, 255, 255, 0.8);
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         display: flex;
         align-items: center;
         justify-content: center;
+        z-index: 99;
       }
-
+      #compass-pointer {
+        position: absolute;
+        width: 100px;
+        height: 4px;
+        background-color: red;
+        transform-origin: center;
+      }
+      #compass-text {
+        position: absolute;
+        top: 60%;
+        text-align: center;
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+      }
       #destination-arrow {
         position: fixed;
-        bottom: 25vh;
+        bottom: 200px;
         left: 50%;
+        transform: translateX(-50%);
         width: 0;
         height: 0;
-        border-left: 30px solid transparent;
-        border-right: 30px solid transparent;
-        border-bottom: 75px solid #2ecc71;
-        transform: translateX(-50%);
-        transition: transform 0.3s ease;
-      }
-
-      #acknowledgment, #error-message {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        width: 80%;
-        max-width: 400px;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        transform: translate(-50%, -50%);
-        z-index: 200;
-        display: none;
-        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
-      }
-
-      #acknowledgment {
-        background-color: #2ecc71;
-        color: white;
-      }
-
-      #error-message {
-        background-color: #e74c3c;
-        color: white;
-      }
-
-      @media (max-height: 600px) {
-        #compass {
-          bottom: 10px;
-        }
-        #destination-arrow {
-          bottom: 120px;
-        }
+        border-left: 20px solid transparent;
+        border-right: 20px solid transparent;
+        border-bottom: 50px solid green;
+        z-index: 98;
       }
     </style>
   </head>
   <body>
-    <!-- Existing UI elements remain the same as previous implementation -->
-    <script>
-      // [Previous game implementation remains largely the same]
-      
-      // Add orientation change handling
-      window.addEventListener('orientationchange', () => {
-        // Adjust UI or game state if needed
-        console.log('Device orientation changed:', window.orientation);
-      });
+    <div id="game-ui">
+      <p id="clue-message">Press Start to reveal the clue and begin navigation.</p>
+      <p id="status-message">Press Start to begin navigation.</p>
+      <button id="start-button" onclick="requestPermissionsAndStartGame()">Start Navigation</button>
+    </div>
+    <div id="level-indicator">Level: <span id="current-level">1</span></div>
+    <div id="acknowledgment">
+      Congratulations! You've found Ralphie!
+      <button id="next-level-button" onclick="goToNextLevel()">Continue to Next Location</button>
+    </div>
+    <div id="destination-arrow"></div>
+    <div id="compass">
+      <div id="compass-pointer"></div>
+      <div id="compass-text">Direction</div>
+    </div>
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+      <a-assets>
+        <a-asset-item id="target-model" src="AnimatedRalphie.glb"></a-asset-item>
+      </a-assets>
+      <a-entity
+        id="target-model-entity"
+        gltf-model="#target-model"
+        scale="1 1 1"
+        gps-entity-place>
+      </a-entity>
+      <a-camera gps-camera rotation-reader></a-camera>
+    </a-scene>
 
-      // Prevent default touch behaviors that might interfere with AR
-      document.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-      }, { passive: false });
+    <script>
+      const locations = [
+        { 
+          latitude: 40.0095, 
+          longitude: -105.2716, 
+          clue: "The heart of CU, where students flock to study and socialize. You'll find Ralphie near the fountain." 
+        },
+        { 
+          latitude: 40.0077, 
+          longitude: -105.2725, 
+          clue: "Where books and knowledge abound, Ralphie's hiding somewhere profound." 
+        },
+        { 
+          latitude: 40.0094, 
+          longitude: -105.2658, 
+          clue: "Catch a game or feel the roar of the crowd. Ralphie loves to run here!" 
+        },
+        { 
+          latitude: 40.0079, 
+          longitude: -105.2734, 
+          clue: "Beneath the red roof of this arts haven, find Ralphie enjoying a masterpiece." 
+        },
+        { 
+          latitude: 40.0065, 
+          longitude: -105.2647, 
+          clue: "Ralphie might be pondering engineering marvels in this hub of innovation." 
+        }
+      ];
+
+      let targetLocation;
+      let gameStarted = false;
+      let watchId = null;
+      let currentHeading = 0;
+      let currentLocation = null;
+      let currentLevel = 1;
+      let maxLevels = locations.length;
+      let usedLocations = new Set();
+
+      function requestPermissionsAndStartGame() {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(() => {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+              DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                  if (response === 'granted') {
+                    startGame();
+                  } else {
+                    alert('Device orientation permission denied');
+                  }
+                })
+                .catch(console.error);
+            } else {
+              startGame();
+            }
+          }, onLocationError);
+        } else {
+          alert('Geolocation is not supported by this browser.');
+        }
+      }
+
+      function startGame() {
+        if (gameStarted) return;
+
+        gameStarted = true;
+        document.getElementById("start-button").style.display = "none";
+        document.getElementById("current-level").textContent = currentLevel;
+
+        let availableLocations = locations.filter(loc => !usedLocations.has(loc));
+        if (availableLocations.length === 0) {
+          showGameComplete();
+          return;
+        }
+
+        targetLocation = availableLocations[Math.floor(Math.random() * availableLocations.length)];
+        usedLocations.add(targetLocation);
+
+        document.getElementById("clue-message").textContent = Clue: ${targetLocation.clue};
+        document.getElementById("status-message").textContent = "Acquiring location...";
+
+        const modelEntity = document.getElementById("target-model-entity");
+        modelEntity.setAttribute("gps-entity-place", latitude: ${targetLocation.latitude}; longitude: ${targetLocation.longitude});
+
+        initDeviceOrientation();
+
+        watchId = navigator.geolocation.watchPosition(onLocationUpdate, onLocationError, {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0
+        });
+      }
+
+      function goToNextLevel() {
+        document.getElementById("acknowledgment").style.display = "none";
+        currentLevel++;
+        
+        if (currentLevel > maxLevels) {
+          showGameComplete();
+          return;
+        }
+
+        gameStarted = false;
+        document.getElementById("current-level").textContent = currentLevel;
+        startGame();
+      }
+
+      function showGameComplete() {
+        const acknowledgment = document.getElementById("acknowledgment");
+        acknowledgment.innerHTML = `
+          <h2>Congratulations!</h2>
+          <p>You've completed all levels and found Ralphie in all locations!</p>
+          <button id="next-level-button" onclick="resetGame()">Play Again</button>
+        `;
+        acknowledgment.style.display = "block";
+      }
+
+      function resetGame() {
+        currentLevel = 1;
+        usedLocations.clear();
+        document.getElementById("acknowledgment").style.display = "none";
+        document.getElementById("current-level").textContent = currentLevel;
+        gameStarted = false;
+        startGame();
+      }
+
+      function initDeviceOrientation() {
+        if (window.DeviceOrientationEvent) {
+          window.addEventListener('deviceorientation', handleOrientation, false);
+        } else {
+          console.warn('Device orientation not supported');
+        }
+      }
+
+      function handleOrientation(event) {
+        let heading;
+        
+        if (event.webkitCompassHeading) {
+          heading = event.webkitCompassHeading;
+        } else if (event.alpha !== null) {
+          heading = 360 - event.alpha;
+        } else {
+          return;
+        }
+
+        currentHeading = heading;
+        updateCompassUI(heading);
+
+        if (currentLocation) {
+          const bearing = calculateBearing(
+            currentLocation.latitude, 
+            currentLocation.longitude, 
+            targetLocation.latitude, 
+            targetLocation.longitude
+          );
+          updateUI(calculateDistance(
+            currentLocation.latitude, 
+            currentLocation.longitude, 
+            targetLocation.latitude, 
+            targetLocation.longitude
+          ), bearing);
+        }
+      }
+
+      function stopGame() {
+        if (watchId) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+        window.removeEventListener('deviceorientation', handleOrientation);
+      }
+
+      function onLocationUpdate(position) {
+        const { latitude, longitude } = position.coords;
+        currentLocation = { latitude, longitude };
+        
+        const distance = calculateDistance(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
+        const bearing = calculateBearing(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
+
+        updateUI(distance, bearing);
+
+        if (distance < 20) {  // 20 meters detection radius
+          document.getElementById("acknowledgment").style.display = "block";
+          stopGame();
+        }
+      }
+
+      function onLocationError(error) {
+        document.getElementById("status-message").textContent = "Error acquiring location.";
+        if (error.code === error.PERMISSION_DENIED) {
+          alert("Location services are disabled. Please enable them to play.");
+        }
+        console.error("Location Error: ", error);
+      }
+
+      function updateCompassUI(heading) {
+        const compassPointer = document.getElementById('compass-pointer');
+        const compassText = document.getElementById('compass-text');
+
+        compassPointer.style.transform = rotate(${-heading}deg);
+
+        const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
+        const directionIndex = Math.round(heading / 45) % 8;
+        compassText.textContent = directions[directionIndex];
+      }
+
+      function updateUI(distance, bearing) {
+        const statusMessage = document.getElementById("status-message");
+        statusMessage.textContent = Distance: ${distance.toFixed(1)}m | Target Bearing: ${bearing.toFixed(1)}°;
+
+        const relativeBearing = (bearing - currentHeading + 360) % 360;
+        
+        const destinationArrow = document.getElementById('destination-arrow');
+        destinationArrow.style.transform = translateX(-50%) rotate(${relativeBearing}deg);
+      }
+
+      function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371000;
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a = Math.sin(dLat / 2) ** 2 +
+          Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+
+      function calculateBearing(lat1, lon1, lat2, lon2) {
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const lat1Rad = (lat1 * Math.PI) / 180;
+        const lat2Rad = (lat2 * Math.PI) / 180;
+        const y = Math.sin(dLon) * Math.cos(lat2Rad);
+        const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+          Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+        return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+      }
     </script>
-  </body>
+  </body>
 </html>
