@@ -1,216 +1,354 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AR Ralphie Navigation Game</title>
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.js"></script>
-    <style>
-      body { 
-        margin: 0; 
-        font-family: Arial, sans-serif; 
-        overflow: hidden; 
-      }
-      #overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        background: rgba(255,255,255,0.9);
-        padding: 10px;
-        text-align: center;
-        z-index: 1000;
-      }
-      #debug-info {
-        position: fixed;
-        bottom: 10px;
-        left: 10px;
-        background: rgba(0,0,0,0.7);
-        color: white;
-        padding: 10px;
-        max-width: 300px;
-        z-index: 1000;
-        font-size: 12px;
-        overflow: auto;
-        max-height: 200px;
-      }
-      #start-button {
-        background-color: #4CAF50;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="overlay">
-      <h3 id="clue-message">Find Ralphie at the CU Boulder Campus!</h3>
-      <p id="status-message">Press Start to begin the AR adventure</p>
-      <button id="start-button" onclick="startARGame()">Start Navigation</button>
-    </div>
-    
-    <div id="debug-info"></div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AR Navigation Game with Compass</title>
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.rawgit.com/jeromeetienne/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+      }
+      #game-ui {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        padding: 10px 20px;
+        text-align: center;
+        background-color: rgba(255, 255, 255, 0.9);
+        z-index: 100;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      #clue-message {
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+        line-height: 1.4;
+      }
+      #status-message {
+        font-size: 14px;
+        color: #555;
+        margin: 5px 0 0 0;
+      }
+      #start-button {
+        background-color: #4caf50;
+        color: white;
+        padding: 12px 24px;
+        font-size: 18px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 10px;
+        transition: background-color 0.3s;
+      }
+      #start-button:hover {
+        background-color: #45a049;
+      }
+      #compass {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 150px;
+        height: 150px;
+        border: 5px solid #333;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #compass-pointer {
+        position: absolute;
+        width: 100px;
+        height: 4px;
+        background-color: red;
+        transform-origin: bottom center;
+        transform: rotate(0deg);
+      }
+      #compass-text {
+        position: absolute;
+        top: 60%;
+        text-align: center;
+        font-size: 16px;
+        font-weight: bold;
+        color: #333;
+      }
+      #destination-arrow {
+        position: fixed;
+        bottom: 200px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 0;
+        height: 0;
+        border-left: 20px solid transparent;
+        border-right: 20px solid transparent;
+        border-bottom: 50px solid green;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-ui">
+      <p id="clue-message">Press Start to reveal the clue and begin navigation.</p>
+      <p id="status-message">Press Start to begin navigation.</p>
+      <button id="start-button" onclick="requestPermissionsAndStartGame()">Start Navigation</button>
+    </div>
+    <div id="destination-arrow"></div>
+    <div id="compass">
+      <div id="compass-pointer"></div>
+      <div id="compass-text">Direction</div>
+    </div>
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+      <a-entity
+        id="target-model-entity"
+        gps-entity-place
+        scale="1.5 1.5 1.5"
+        visible="false">
+      </a-entity>
+      <a-camera gps-camera rotation-reader></a-camera>
+    </a-scene>
+    <script>
+      // Game configuration
+      const DESTINATION_THRESHOLD = 20; // meters
+      const VISIBILITY_THRESHOLD = 50; // meters to make model visible
 
-    <a-scene 
-      embedded 
-      arjs="sourceType: webcam; 
-             debugUIEnabled: false; 
-             detectionMode: mono_and_matrix; 
-             matrixCodeType: 3x3;"
-      vr-mode-ui="enabled: false"
-    >
-      <a-assets>
-        <a-asset-item id="ralphie-model" src="AnimatedRalphie.glb"></a-asset-item>
-      </a-assets>
+      // Predefined locations
+      const locations = [
+        { 
+          latitude: 40.007154, 
+          longitude: -105.270400, 
+          clue: "The heart of CU, where students flock to study and socialize. You'll find Ralphie near the fountain." 
+        },
+        { 
+          latitude: 40.006191, 
+          longitude: -105.271594, 
+          clue: "Where books and knowledge abound, Ralphie's hiding somewhere profound." 
+        },
+        { 
+          latitude: 40.008563, 
+          longitude: -105.270201, 
+          clue: "Catch a game or feel the roar of the crowd. Ralphie loves to run here!" 
+        },
+        { 
+          latitude: 40.009452, 
+          longitude: -105.269720, 
+          clue: "Beneath the red roof of this arts haven, find Ralphie enjoying a masterpiece." 
+        }
+      ];
 
-      <a-entity 
-        id="ralphie-entity"
-        gps-entity-place
-        gltf-model="#ralphie-model"
-        animation-mixer
-        scale="3 3 3"
-        position="0 0 0"
-        visible="false"
-      ></a-entity>
+      // Game state variables
+      let targetLocation;
+      let gameStarted = false;
+      let watchId = null;
+      let currentHeading = 0;
+      let currentLocation = null;
 
-      <a-camera gps-camera rotation-reader look-controls></a-camera>
-    </a-scene>
+      // Request permissions and start game
+      function requestPermissionsAndStartGame() {
+        if (!navigator.geolocation) {
+          alert('Geolocation is not supported by this browser.');
+          return;
+        }
 
-    <script src="https://unpkg.com/aframe-animation-mixer-component@2.1.1/dist/aframe-animation-mixer-component.min.js"></script>
+        // Request location permission first
+        navigator.geolocation.getCurrentPosition(
+          () => {
+            // Try to request device orientation permission (for iOS)
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+              DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                  if (response === 'granted') {
+                    startGame();
+                  } else {
+                    alert('Device orientation permission denied');
+                  }
+                })
+                .catch(console.error);
+            } else {
+              // For browsers that don't require explicit permission
+              startGame();
+            }
+          }, 
+          (error) => {
+            console.error('Location permission error:', error);
+            alert('Location permission denied. Cannot start game.');
+          }
+        );
+      }
 
-    <script>
-      // Logging function
-      function debugLog(message) {
-        const debugInfo = document.getElementById('debug-info');
-        const logEntry = document.createElement('p');
-        logEntry.textContent = message;
-        debugInfo.appendChild(logEntry);
-        debugInfo.scrollTop = debugInfo.scrollHeight;
-        console.log(message);
-      }
+      // Start the game
+      function startGame() {
+        if (gameStarted) return;
 
-      // Predefined locations around CU Boulder campus
-      const LOCATIONS = [
-        {
-          name: "Norlin Library",
-          latitude: 40.007154,
-          longitude: -105.270400,
-          clue: "Near the heart of knowledge, find Ralphie by the historic library!"
-        },
-        {
-          name: "Folsom Field",
-          latitude: 40.008563,
-          longitude: -105.270201,
-          clue: "Where buffaloes roam and football dreams are born!"
-        },
-        {
-          name: "University of Colorado Museum",
-          latitude: 40.009452,
-          longitude: -105.269720,
-          clue: "Discover Ralphie amid the treasures of history!"
-        }
-      ];
+        gameStarted = true;
+        document.getElementById("start-button").style.display = "none";
 
-      // Game state
-      let currentLocation = null;
-      let targetLocation = null;
-      let watchId = null;
+        // Randomly select a location
+        targetLocation = locations[Math.floor(Math.random() * locations.length)];
+        
+        document.getElementById("clue-message").textContent = `Clue: ${targetLocation.clue}`;
+        document.getElementById("status-message").textContent = "Tracking your location...";
 
-      // Start AR Game
-      function startARGame() {
-        // Hide start button
-        document.getElementById('start-button').style.display = 'none';
+        // Set AR target coordinates and model
+        const modelEntity = document.getElementById("target-model-entity");
+        
+        // Remove any existing model first
+        if (modelEntity.firstChild) {
+          modelEntity.removeChild(modelEntity.firstChild);
+        }
 
-        // Select random location
-        targetLocation = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
-        
-        // Update UI
-        document.getElementById('clue-message').textContent = targetLocation.clue;
-        document.getElementById('status-message').textContent = `Find Ralphie at: ${targetLocation.name}`;
+        // Create new model element
+        const modelElement = document.createElement('a-asset-item');
+        modelElement.setAttribute('id', 'target-model');
+        modelElement.setAttribute('src', 'AnimatedRalphie.glb');
+        modelEntity.appendChild(modelElement);
 
-        // Request location permissions
-        if (navigator.geolocation) {
-          watchId = navigator.geolocation.watchPosition(
-            updateLocation, 
-            handleLocationError, 
-            {
-              enableHighAccuracy: true,
-              timeout: 10000,
-              maximumAge: 30000
-            }
-          );
-        } else {
-          debugLog('Geolocation is not supported by this browser.');
-        }
-      }
+        // Set model and location
+        modelEntity.setAttribute('gltf-model', '#target-model');
+        modelEntity.setAttribute("gps-entity-place", `latitude: ${targetLocation.latitude}; longitude: ${targetLocation.longitude}`);
+        
+        // Start location tracking
+        watchId = navigator.geolocation.watchPosition(
+          onLocationUpdate, 
+          onLocationError, 
+          {
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0
+          }
+        );
 
-      // Update location and model visibility
-      function updateLocation(position) {
-        const { latitude, longitude } = position.coords;
-        
-        // Calculate distance to target
-        const distance = calculateDistance(
-          latitude, longitude, 
-          targetLocation.latitude, 
-          targetLocation.longitude
-        );
+        // Initialize device orientation
+        initDeviceOrientation();
+      }
 
-        // Debug logging
-        debugLog(`Current Location: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
-        debugLog(`Target Location: ${targetLocation.latitude.toFixed(6)}, ${targetLocation.longitude.toFixed(6)}`);
-        debugLog(`Distance to Target: ${distance.toFixed(2)} meters`);
+      // Handle location updates
+      function onLocationUpdate(position) {
+        const { latitude, longitude } = position.coords;
+        currentLocation = { latitude, longitude };
+        
+        const distance = calculateDistance(
+          latitude, longitude, 
+          targetLocation.latitude, 
+          targetLocation.longitude
+        );
+        
+        const bearing = calculateBearing(
+          latitude, longitude, 
+          targetLocation.latitude, 
+          targetLocation.longitude
+        );
 
-        // Get Ralphie entity
-        const ralphieEntity = document.getElementById('ralphie-entity');
+        // Update UI with current distance and bearing
+        updateUI(distance, bearing);
 
-        // Set GPS coordinates for Ralphie
-        ralphieEntity.setAttribute('gps-entity-place', 
-          `latitude: ${targetLocation.latitude}; longitude: ${targetLocation.longitude}`
-        );
+        // Update model visibility based on distance
+        const modelEntity = document.getElementById("target-model-entity");
+        if (distance <= VISIBILITY_THRESHOLD) {
+          modelEntity.setAttribute('visible', 'true');
+        } else {
+          modelEntity.setAttribute('visible', 'false');
+        }
+      }
 
-        // Adjust visibility and scale based on distance
-        if (distance <= 50) {
-          ralphieEntity.setAttribute('visible', 'true');
-          ralphieEntity.setAttribute('scale', '5 5 5');
-          debugLog('Ralphie is now visible!');
-        } else {
-          ralphieEntity.setAttribute('visible', 'false');
-          debugLog('Ralphie is hidden. Get closer!');
-        }
-      }
+      // Update game UI
+      function updateUI(distance, bearing) {
+        const statusMessage = document.getElementById("status-message");
+        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m | Target Bearing: ${bearing.toFixed(1)}°`;
 
-      // Calculate distance between two coordinates (Haversine formula)
-      function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000; // Earth's radius in meters
-        const dLat = ((lat2 - lat1) * Math.PI) / 180;
-        const dLon = ((lon2 - lon1) * Math.PI) / 180;
-        const a = 
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
-      }
+        const relativeBearing = (bearing - currentHeading + 360) % 360;
+        
+        const destinationArrow = document.getElementById('destination-arrow');
+        destinationArrow.style.transform = `rotate(${relativeBearing}deg)`;
+      }
 
-      // Handle location tracking errors
-      function handleLocationError(error) {
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            debugLog("Location permission denied.");
-            break;
-          case error.POSITION_UNAVAILABLE:
-            debugLog("Location information unavailable.");
-            break;
-          case error.TIMEOUT:
-            debugLog("Location request timed out.");
-            break;
-          default:
-            debugLog("Unknown location error.");
-        }
-      }
-    </script>
-  </body>
+      // Initialize device orientation tracking
+      function initDeviceOrientation() {
+        if (window.DeviceOrientationEvent) {
+          window.addEventListener('deviceorientation', handleOrientation, false);
+        } else {
+          console.warn('Device orientation not supported');
+        }
+      }
+
+      // Handle device orientation
+      function handleOrientation(event) {
+        let heading;
+        
+        if (event.webkitCompassHeading) {
+          heading = event.webkitCompassHeading;
+        } else if (event.alpha !== null) {
+          heading = 360 - event.alpha;
+        } else {
+          return;
+        }
+
+        currentHeading = heading;
+        updateCompassUI(heading);
+      }
+
+      // Update compass UI
+      function updateCompassUI(heading) {
+        const compassPointer = document.getElementById('compass-pointer');
+        const compassText = document.getElementById('compass-text');
+
+        compassPointer.style.transform = `rotate(${-heading}deg)`;
+
+        const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
+        const directionIndex = Math.round(heading / 45) % 8;
+        compassText.textContent = directions[directionIndex];
+      }
+
+      // Calculate distance between two coordinates
+      function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371000; // Earth's radius in meters
+        const dLat = ((lat2 - lat1) * Math.PI) / 180;
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const a = 
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+      }
+
+      // Calculate bearing between two coordinates
+      function calculateBearing(lat1, lon1, lat2, lon2) {
+        const dLon = ((lon2 - lon1) * Math.PI) / 180;
+        const lat1Rad = (lat1 * Math.PI) / 180;
+        const lat2Rad = (lat2 * Math.PI) / 180;
+        const y = Math.sin(dLon) * Math.cos(lat2Rad);
+        const x = 
+          Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+          Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+        return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+      }
+
+      // Handle location tracking errors
+      function onLocationError(error) {
+        console.error('Location tracking error:', error);
+        document.getElementById("status-message").textContent = "Error tracking location.";
+        
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            alert("Location permission denied. Please enable location services.");
+            break;
+          case error.POSITION_UNAVAILABLE:
+            alert("Location information is unavailable.");
+            break;
+          case error.TIMEOUT:
+            alert("Location request timed out.");
+            break;
+          default:
+            alert("An unknown error occurred while tracking location.");
+        }
+      }
+    </script>
+  </body>
 </html>
