@@ -49,6 +49,21 @@
       #start-button:hover {
         background-color: #45a049;
       }
+      #acknowledgment {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: #4caf50;
+        color: white;
+        padding: 20px;
+        font-size: 20px;
+        border-radius: 10px;
+        display: none;
+        z-index: 100;
+        text-align: center;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
       #compass {
         position: fixed;
         bottom: 20px;
@@ -99,67 +114,44 @@
       <p id="status-message">Press Start to begin navigation.</p>
       <button id="start-button" onclick="requestPermissionsAndStartGame()">Start Navigation</button>
     </div>
+    <div id="acknowledgment">You've reached your destination!</div>
     <div id="destination-arrow"></div>
     <div id="compass">
       <div id="compass-pointer"></div>
       <div id="compass-text">Direction</div>
     </div>
     <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+      <a-assets>
+        <a-asset-item id="target-model" src="AnimatedRalphie.glb"></a-asset-item>
+      </a-assets>
       <a-entity
         id="target-model-entity"
-        gps-entity-place
-        scale="1.5 1.5 1.5"
-        visible="false">
+        gltf-model="#target-model"
+        scale="1 1 1"
+        gps-entity-place>
       </a-entity>
       <a-camera gps-camera rotation-reader></a-camera>
     </a-scene>
     <script>
-      // Game configuration
-      const DESTINATION_THRESHOLD = 20; // meters
-      const VISIBILITY_THRESHOLD = 50; // meters to make model visible
-
-      // Predefined locations
       const locations = [
-        { 
-          latitude: 40.007154, 
-          longitude: -105.270400, 
-          clue: "The heart of CU, where students flock to study and socialize. You'll find Ralphie near the fountain." 
-        },
-        { 
-          latitude: 40.006191, 
-          longitude: -105.271594, 
-          clue: "Where books and knowledge abound, Ralphie's hiding somewhere profound." 
-        },
-        { 
-          latitude: 40.008563, 
-          longitude: -105.270201, 
-          clue: "Catch a game or feel the roar of the crowd. Ralphie loves to run here!" 
-        },
-        { 
-          latitude: 40.009452, 
-          longitude: -105.269720, 
-          clue: "Beneath the red roof of this arts haven, find Ralphie enjoying a masterpiece." 
-        }
+        { latitude: 40.007154, longitude: -105.270400, clue: "The heart of CU, where students flock to study and socialize. You'll find Ralphie near the fountain." },
+        { latitude: 40.006191, longitude:  -105.271594, clue: "Where books and knowledge abound, Ralphie's hiding somewhere profound." },
+        { latitude: 40.008563, longitude: -105.270201, clue: "Catch a game or feel the roar of the crowd. Ralphie loves to run here!" },
+        { latitude: 40.009452, longitude: -105.269720, clue: "Beneath the red roof of this arts haven, find Ralphie enjoying a masterpiece." }
+        // { latitude: 40.0065, longitude: -105.2647, clue: "Ralphie might be pondering engineering marvels in this hub of innovation." },
       ];
 
-      // Game state variables
       let targetLocation;
       let gameStarted = false;
       let watchId = null;
       let currentHeading = 0;
       let currentLocation = null;
 
-      // Request permissions and start game
       function requestPermissionsAndStartGame() {
-        if (!navigator.geolocation) {
-          alert('Geolocation is not supported by this browser.');
-          return;
-        }
-
-        // Request location permission first
-        navigator.geolocation.getCurrentPosition(
-          () => {
-            // Try to request device orientation permission (for iOS)
+        // Request location permission
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(() => {
+            // Request device orientation permission (for iOS)
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
               DeviceOrientationEvent.requestPermission()
                 .then(response => {
@@ -174,15 +166,12 @@
               // For browsers that don't require explicit permission
               startGame();
             }
-          }, 
-          (error) => {
-            console.error('Location permission error:', error);
-            alert('Location permission denied. Cannot start game.');
-          }
-        );
+          }, onLocationError);
+        } else {
+          alert('Geolocation is not supported by this browser.');
+        }
       }
 
-      // Start the game
       function startGame() {
         if (gameStarted) return;
 
@@ -191,84 +180,24 @@
 
         // Randomly select a location
         targetLocation = locations[Math.floor(Math.random() * locations.length)];
-        
         document.getElementById("clue-message").textContent = `Clue: ${targetLocation.clue}`;
-        document.getElementById("status-message").textContent = "Tracking your location...";
+        document.getElementById("status-message").textContent = "Acquiring location...";
 
-        // Set AR target coordinates and model
+        // Set AR target coordinates
         const modelEntity = document.getElementById("target-model-entity");
-        
-        // Remove any existing model first
-        if (modelEntity.firstChild) {
-          modelEntity.removeChild(modelEntity.firstChild);
-        }
-
-        // Create new model element
-        const modelElement = document.createElement('a-asset-item');
-        modelElement.setAttribute('id', 'target-model');
-        modelElement.setAttribute('src', 'AnimatedRalphie.glb');
-        modelEntity.appendChild(modelElement);
-
-        // Set model and location
-        modelEntity.setAttribute('gltf-model', '#target-model');
         modelEntity.setAttribute("gps-entity-place", `latitude: ${targetLocation.latitude}; longitude: ${targetLocation.longitude}`);
-        
-        // Start location tracking
-        watchId = navigator.geolocation.watchPosition(
-          onLocationUpdate, 
-          onLocationError, 
-          {
-            enableHighAccuracy: true,
-            timeout: 20000,
-            maximumAge: 0
-          }
-        );
 
         // Initialize device orientation
         initDeviceOrientation();
+
+        // Start location tracking
+        watchId = navigator.geolocation.watchPosition(onLocationUpdate, onLocationError, {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        });
       }
 
-      // Handle location updates
-      function onLocationUpdate(position) {
-        const { latitude, longitude } = position.coords;
-        currentLocation = { latitude, longitude };
-        
-        const distance = calculateDistance(
-          latitude, longitude, 
-          targetLocation.latitude, 
-          targetLocation.longitude
-        );
-        
-        const bearing = calculateBearing(
-          latitude, longitude, 
-          targetLocation.latitude, 
-          targetLocation.longitude
-        );
-
-        // Update UI with current distance and bearing
-        updateUI(distance, bearing);
-
-        // Update model visibility based on distance
-        const modelEntity = document.getElementById("target-model-entity");
-        if (distance <= VISIBILITY_THRESHOLD) {
-          modelEntity.setAttribute('visible', 'true');
-        } else {
-          modelEntity.setAttribute('visible', 'false');
-        }
-      }
-
-      // Update game UI
-      function updateUI(distance, bearing) {
-        const statusMessage = document.getElementById("status-message");
-        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m | Target Bearing: ${bearing.toFixed(1)}°`;
-
-        const relativeBearing = (bearing - currentHeading + 360) % 360;
-        
-        const destinationArrow = document.getElementById('destination-arrow');
-        destinationArrow.style.transform = `rotate(${relativeBearing}deg)`;
-      }
-
-      // Initialize device orientation tracking
       function initDeviceOrientation() {
         if (window.DeviceOrientationEvent) {
           window.addEventListener('deviceorientation', handleOrientation, false);
@@ -277,13 +206,16 @@
         }
       }
 
-      // Handle device orientation
       function handleOrientation(event) {
         let heading;
         
+        // Prefer the standard compass heading if available
         if (event.webkitCompassHeading) {
+          // iOS devices
           heading = event.webkitCompassHeading;
         } else if (event.alpha !== null) {
+          // Most Android devices
+          // Convert from standard compass to true north
           heading = 360 - event.alpha;
         } else {
           return;
@@ -291,63 +223,99 @@
 
         currentHeading = heading;
         updateCompassUI(heading);
+
+        // If we have both current location and target, update UI
+        if (currentLocation) {
+          const bearing = calculateBearing(
+            currentLocation.latitude, 
+            currentLocation.longitude, 
+            targetLocation.latitude, 
+            targetLocation.longitude
+          );
+          updateUI(calculateDistance(
+            currentLocation.latitude, 
+            currentLocation.longitude, 
+            targetLocation.latitude, 
+            targetLocation.longitude
+          ), bearing);
+        }
       }
 
-      // Update compass UI
+      function stopGame() {
+        if (watchId) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+        }
+        window.removeEventListener('deviceorientation', handleOrientation);
+      }
+
+      function onLocationUpdate(position) {
+        const { latitude, longitude } = position.coords;
+        currentLocation = { latitude, longitude };
+        
+        const distance = calculateDistance(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
+        const bearing = calculateBearing(latitude, longitude, targetLocation.latitude, targetLocation.longitude);
+
+        updateUI(distance, bearing);
+
+        if (distance < 2) {
+          document.getElementById("acknowledgment").style.display = "block";
+          stopGame();
+        }
+      }
+
+      function onLocationError(error) {
+        document.getElementById("status-message").textContent = "Error acquiring location.";
+        if (error.code === error.PERMISSION_DENIED) {
+          alert("Location services are disabled. Please enable them to play.");
+        }
+        console.error("Location Error: ", error);
+      }
+
       function updateCompassUI(heading) {
         const compassPointer = document.getElementById('compass-pointer');
         const compassText = document.getElementById('compass-text');
 
+        // Rotate compass pointer
         compassPointer.style.transform = `rotate(${-heading}deg)`;
 
+        // Update direction text
         const directions = ["North", "North-East", "East", "South-East", "South", "South-West", "West", "North-West"];
         const directionIndex = Math.round(heading / 45) % 8;
         compassText.textContent = directions[directionIndex];
       }
 
-      // Calculate distance between two coordinates
+      function updateUI(distance, bearing) {
+        const statusMessage = document.getElementById("status-message");
+        statusMessage.textContent = `Distance: ${distance.toFixed(1)}m | Target Bearing: ${bearing.toFixed(1)}°`;
+
+        // Calculate relative bearing by subtracting current heading from target bearing
+        const relativeBearing = (bearing - currentHeading + 360) % 360;
+        
+        // Rotate destination arrow to point to the destination
+        const destinationArrow = document.getElementById('destination-arrow');
+        destinationArrow.style.transform = `rotate(${relativeBearing}deg)`;
+      }
+
       function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000; // Earth's radius in meters
+        const R = 6371000;
         const dLat = ((lat2 - lat1) * Math.PI) / 180;
         const dLon = ((lon2 - lon1) * Math.PI) / 180;
-        const a = 
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        const a = Math.sin(dLat / 2) ** 2 +
           Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          Math.sin(dLon / 2) ** 2;
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
       }
 
-      // Calculate bearing between two coordinates
       function calculateBearing(lat1, lon1, lat2, lon2) {
         const dLon = ((lon2 - lon1) * Math.PI) / 180;
         const lat1Rad = (lat1 * Math.PI) / 180;
         const lat2Rad = (lat2 * Math.PI) / 180;
         const y = Math.sin(dLon) * Math.cos(lat2Rad);
-        const x = 
-          Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+        const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
           Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
         return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-      }
-
-      // Handle location tracking errors
-      function onLocationError(error) {
-        console.error('Location tracking error:', error);
-        document.getElementById("status-message").textContent = "Error tracking location.";
-        
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            alert("Location permission denied. Please enable location services.");
-            break;
-          case error.POSITION_UNAVAILABLE:
-            alert("Location information is unavailable.");
-            break;
-          case error.TIMEOUT:
-            alert("Location request timed out.");
-            break;
-          default:
-            alert("An unknown error occurred while tracking location.");
-        }
       }
     </script>
   </body>
